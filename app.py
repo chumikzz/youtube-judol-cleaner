@@ -153,4 +153,5 @@ def run_cleaner():
     return f"✅ {total_deleted} komentar spam berhasil dihapus pada {waktu}.<br>Log disimpan ke: <b>{log_filename}</b>"
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    port = int(os.environ.get("PORT", 5000))  # Railway akan kasih PORT lewat env
+    app.run(host="0.0.0.0", port=port)
