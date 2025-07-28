@@ -16,7 +16,16 @@ app.secret_key = 'ganti-ini-dengan-yang-lebih-kuat'
 
 # --- KONFIGURASI --- #
 SCOPES = ['https://www.googleapis.com/auth/youtube.force-ssl']
-CLIENT_SECRET = 'client_secret.json'
+import json
+from io import StringIO
+
+CLIENT_SECRET_CONTENT = os.getenv('CLIENT_SECRET_JSON')
+CLIENT_SECRET = 'client_secret_parsed.json'
+
+# simpan isi json ke file sementara saat runtime
+if CLIENT_SECRET_CONTENT:
+    with open(CLIENT_SECRET, 'w') as f:
+        f.write(CLIENT_SECRET_CONTENT)
 CHANNEL_ID = 'UCkqDgAg-mSqv_4GSNMlYvPw'
 
 # --- SPAM KEYWORDS --- #
