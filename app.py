@@ -1,27 +1,33 @@
 import os
-os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'
-
-from flask import Flask, redirect, request, url_for, render_template_string, session
 import datetime
 import re
 import unicodedata
 import pickle
 import json
 
+from flask import Flask, redirect, request, url_for, render_template_string, session
 from google_auth_oauthlib.flow import Flow
 from googleapiclient.discovery import build
 from google.auth.transport.requests import Request
+
+# Izinkan penggunaan HTTP untuk pengujian lokal
+os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'
 
 app = Flask(__name__)
 app.secret_key = 'ganti-ini-dengan-yang-lebih-kuat'
 
 # --- KONFIGURASI --- #
 SCOPES = ['https://www.googleapis.com/auth/youtube.force-ssl']
-CLIENT_SECRET_JSON_CONTENT = os.getenv('CLIENT_SECRET_JSON')
 CLIENT_SECRET_FILE = 'client_secret.json'
+REDIRECT_URI = 'https://youtube-judol-cleaner-production.up.railway.app/oauth2callback'
 
-# Hanya buat file jika belum ada dan variabel tersedia
-if CLIENT_SECRET_JSON_CONTENT and not os.path.exists(CLIENT_SECRET_FILE):
+# Load client_secret.json dari environment jika belum ada
+CLIENT_SECRET_JSON_CONTENT = os.getenv('CLIENT_SECRET_JSON')
+
+if not CLIENT_SECRET_JSON_CONTENT:
+    raise RuntimeError("❌ CLIENT_SECRET_JSON tidak ditemukan di environment variables!")
+
+if not os.path.exists(CLIENT_SECRET_FILE):
     with open(CLIENT_SECRET_FILE, 'w') as f:
         f.write(CLIENT_SECRET_JSON_CONTENT)
 
@@ -112,7 +118,7 @@ def login():
     flow = Flow.from_client_secrets_file(
         CLIENT_SECRET_FILE,
         scopes=SCOPES,
-        redirect_uri='https://youtube-judol-cleaner-production.up.railway.app/oauth2callback'
+        redirect_uri=REDIRECT_URI
     )
     auth_url, state = flow.authorization_url(prompt='consent')
     session['state'] = state
@@ -125,7 +131,7 @@ def oauth2callback():
         CLIENT_SECRET_FILE,
         scopes=SCOPES,
         state=state,
-        redirect_uri='https://youtube-judol-cleaner-production.up.railway.app/oauth2callback'
+        redirect_uri=REDIRECT_URI
     )
     flow.fetch_token(authorization_response=request.url)
     creds = flow.credentials
