@@ -6,6 +6,7 @@ import datetime
 import re
 import unicodedata
 import pickle
+import json
 
 from google_auth_oauthlib.flow import Flow
 from googleapiclient.discovery import build
@@ -16,16 +17,14 @@ app.secret_key = 'ganti-ini-dengan-yang-lebih-kuat'
 
 # --- KONFIGURASI --- #
 SCOPES = ['https://www.googleapis.com/auth/youtube.force-ssl']
-import json
-from io import StringIO
+CLIENT_SECRET_JSON_CONTENT = os.getenv('CLIENT_SECRET_JSON')
+CLIENT_SECRET_FILE = 'client_secret.json'
 
-CLIENT_SECRET_CONTENT = os.getenv('CLIENT_SECRET_JSON')
-CLIENT_SECRET = 'client_secret.json'
+# Hanya buat file jika belum ada dan variabel tersedia
+if CLIENT_SECRET_JSON_CONTENT and not os.path.exists(CLIENT_SECRET_FILE):
+    with open(CLIENT_SECRET_FILE, 'w') as f:
+        f.write(CLIENT_SECRET_JSON_CONTENT)
 
-# simpan isi json ke file sementara saat runtime
-if CLIENT_SECRET_CONTENT:
-    with open(CLIENT_SECRET, 'w') as f:
-        f.write(CLIENT_SECRET_CONTENT)
 CHANNEL_ID = 'UCkqDgAg-mSqv_4GSNMlYvPw'
 
 # --- SPAM KEYWORDS --- #
@@ -38,7 +37,6 @@ KEYWORDS = list(set([
     'bahkandilaguremix', 'bergabunglahdenganpulau777'
 ]))
 
-# --- CEK SPAM --- #
 def normalize_text(text):
     text = unicodedata.normalize('NFKD', text)
     text = ''.join(c for c in text if not unicodedata.combining(c))
@@ -49,14 +47,12 @@ def is_spam(text):
     normalized = normalize_text(text)
     return any(keyword in normalized for keyword in KEYWORDS)
 
-# --- AUTENTIKASI --- #
 def get_youtube_service():
     if 'credentials' not in session:
         return None
     creds = pickle.loads(session['credentials'])
     return build('youtube', 'v3', credentials=creds)
 
-# --- VIDEO & KOMENTAR --- #
 def get_latest_video_ids(youtube, channel_id, count=2):
     req = youtube.search().list(
         part="id",
@@ -97,7 +93,6 @@ def process_video_comments(youtube, video_id, log_lines):
             break
     return deleted_count
 
-# --- ROUTES --- #
 @app.route('/')
 def index():
     if 'credentials' not in session:
@@ -115,9 +110,9 @@ def index():
 @app.route('/login')
 def login():
     flow = Flow.from_client_secrets_file(
-        CLIENT_SECRET,
+        CLIENT_SECRET_FILE,
         scopes=SCOPES,
-        redirect_uri='http://localhost:5000/oauth2callback'
+        redirect_uri='https://youtube-judol-cleaner-production.up.railway.app/oauth2callback'
     )
     auth_url, state = flow.authorization_url(prompt='consent')
     session['state'] = state
@@ -127,10 +122,10 @@ def login():
 def oauth2callback():
     state = session.get('state')
     flow = Flow.from_client_secrets_file(
-        CLIENT_SECRET,
+        CLIENT_SECRET_FILE,
         scopes=SCOPES,
         state=state,
-        redirect_uri='http://localhost:5000/oauth2callback'
+        redirect_uri='https://youtube-judol-cleaner-production.up.railway.app/oauth2callback'
     )
     flow.fetch_token(authorization_response=request.url)
     creds = flow.credentials
@@ -143,7 +138,6 @@ def run_cleaner():
     if not youtube:
         return redirect(url_for('login'))
 
-    # Ambil jumlah video dari form
     video_count = int(request.form.get('video_count', 2))
     video_ids = get_latest_video_ids(youtube, CHANNEL_ID, count=video_count)
 
