@@ -20,7 +20,7 @@ import json
 from io import StringIO
 
 CLIENT_SECRET_CONTENT = os.getenv('CLIENT_SECRET_JSON')
-CLIENT_SECRET = 'client_secret_parsed.json'
+CLIENT_SECRET = 'client_secret.json'
 
 # simpan isi json ke file sementara saat runtime
 if CLIENT_SECRET_CONTENT:
