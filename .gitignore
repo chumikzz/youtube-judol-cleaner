@@ -1,0 +1,20 @@
+# File kredensial sensitif
+client_secret.json
+token.pickle
+token.json
+
+# File log hasil pembersihan komentar
+log_*.txt
+logs/
+
+# Cache Python
+__pycache__/
+*.pyc
+
+# Virtual environment (jika pakai venv)
+venv/
+.env
+
+# File sistem (Windows/macOS)
+.DS_Store
+Thumbs.db
