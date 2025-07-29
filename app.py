@@ -1,20 +1,32 @@
 import os
-print("DEBUG WEBHOOK saat start:", os.environ.keys())
-print("DEBUG WEBHOOK saat start:", os.getenv("DISCORD_WEBHOOK_URL", "NOT SET"))
-
-print("DEBUG WEBHOOK saat start:", os.getenv("DISCORD_WEBHOOK_URL"))
-
 import datetime
 import re
 import unicodedata
 import pickle
 import requests
 import pytz
-
-
 from flask import Flask, redirect, request, url_for, render_template_string, session
 from google_auth_oauthlib.flow import Flow
 from googleapiclient.discovery import build
+
+# --- Tes Webhook Saat Start ---
+DISCORD_WEBHOOK_URL = os.getenv("DISCORD_WEBHOOK_URL")
+
+if not DISCORD_WEBHOOK_URL:
+    print("⚠️ ERROR: DISCORD_WEBHOOK_URL tidak ditemukan di environment variable!")
+else:
+    print("✅ DISCORD_WEBHOOK_URL ditemukan, mengirim pesan tes ke Discord...")
+    try:
+        test_payload = {
+            "content": "✅ *Bot YouTube Spam Cleaner* berhasil terhubung ke Discord Webhook!"
+        }
+        resp = requests.post(DISCORD_WEBHOOK_URL, json=test_payload, timeout=10)
+        if resp.status_code == 204:
+            print("✅ Pesan tes berhasil dikirim ke Discord.")
+        else:
+            print(f"⚠️ Gagal kirim pesan tes. Status: {resp.status_code}, Response: {resp.text}")
+    except Exception as e:
+        print(f"❌ ERROR saat kirim pesan tes: {e}")
 
 # --- Flask App ---
 app = Flask(__name__)
@@ -103,14 +115,12 @@ def process_video_comments(youtube, video_id):
 
 # --- Kirim Log ke Discord ---
 def send_log_to_discord(lines, waktu):
-    DISCORD_WEBHOOK_URL = os.getenv('DISCORD_WEBHOOK_URL')  # dibaca ulang setiap kali
-    print("DEBUG WEBHOOK saat kirim log:", DISCORD_WEBHOOK_URL)  # debug di Railway logs
-
-    if not DISCORD_WEBHOOK_URL:
+    webhook_url = os.getenv('DISCORD_WEBHOOK_URL')  # dibaca ulang
+    if not webhook_url:
         app.logger.warning("DISCORD_WEBHOOK_URL not set. Skipping Discord log.")
         return
 
-    if lines and len(lines) > 0:
+    if lines:
         content = f"**🧹 {len(lines)} komentar spam berhasil dihapus ({waktu})**\n"
         content += "\n".join(
             [f"[Video: {line['video_id']}] {line['text']}" for line in lines]
@@ -120,7 +130,7 @@ def send_log_to_discord(lines, waktu):
 
     payload = {"content": content}
     try:
-        resp = requests.post(DISCORD_WEBHOOK_URL, json=payload, timeout=10)
+        resp = requests.post(webhook_url, json=payload, timeout=10)
         if resp.status_code != 204:
             app.logger.error(f"Discord webhook error: {resp.status_code} - {resp.text}")
     except Exception as e:
@@ -176,7 +186,6 @@ def run_cleaner():
 
     waktu = datetime.datetime.now(JAKARTA_TZ).strftime('%Y-%m-%d %H:%M')
 
-    # Kirim log ke Discord SELALU
     send_log_to_discord(deleted_comments, waktu)
 
     return render_template_string("""
