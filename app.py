@@ -1,4 +1,7 @@
 import os
+print("DEBUG WEBHOOK saat start:", os.environ.keys())
+print("DEBUG WEBHOOK saat start:", os.getenv("DISCORD_WEBHOOK_URL", "NOT SET"))
+
 print("DEBUG WEBHOOK saat start:", os.getenv("DISCORD_WEBHOOK_URL"))
 
 import datetime
