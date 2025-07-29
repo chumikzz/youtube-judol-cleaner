@@ -1,37 +1,25 @@
 import os
+os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'
+
+from flask import Flask, redirect, request, url_for, render_template_string, session
 import datetime
 import re
 import unicodedata
 import pickle
-import json
+import requests
 
-from flask import Flask, redirect, request, url_for, render_template_string, session
 from google_auth_oauthlib.flow import Flow
 from googleapiclient.discovery import build
 from google.auth.transport.requests import Request
-
-# Izinkan penggunaan HTTP untuk pengujian lokal
-os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'
 
 app = Flask(__name__)
 app.secret_key = 'ganti-ini-dengan-yang-lebih-kuat'
 
 # --- KONFIGURASI --- #
 SCOPES = ['https://www.googleapis.com/auth/youtube.force-ssl']
-CLIENT_SECRET_FILE = 'client_secret.json'
-REDIRECT_URI = 'https://youtube-judol-cleaner-production.up.railway.app/oauth2callback'
-
-# Load client_secret.json dari environment jika belum ada
-CLIENT_SECRET_JSON_CONTENT = os.getenv('CLIENT_SECRET_JSON')
-
-if not CLIENT_SECRET_JSON_CONTENT:
-    raise RuntimeError("❌ CLIENT_SECRET_JSON tidak ditemukan di environment variables!")
-
-if not os.path.exists(CLIENT_SECRET_FILE):
-    with open(CLIENT_SECRET_FILE, 'w') as f:
-        f.write(CLIENT_SECRET_JSON_CONTENT)
-
+CLIENT_SECRET = 'client_secret.json'
 CHANNEL_ID = 'UCkqDgAg-mSqv_4GSNMlYvPw'
+DISCORD_WEBHOOK_URL = os.getenv('DISCORD_WEBHOOK_URL')
 
 # --- SPAM KEYWORDS --- #
 KEYWORDS = list(set([
@@ -43,6 +31,7 @@ KEYWORDS = list(set([
     'bahkandilaguremix', 'bergabunglahdenganpulau777'
 ]))
 
+# --- CEK SPAM --- #
 def normalize_text(text):
     text = unicodedata.normalize('NFKD', text)
     text = ''.join(c for c in text if not unicodedata.combining(c))
@@ -53,12 +42,14 @@ def is_spam(text):
     normalized = normalize_text(text)
     return any(keyword in normalized for keyword in KEYWORDS)
 
+# --- AUTENTIKASI --- #
 def get_youtube_service():
     if 'credentials' not in session:
         return None
     creds = pickle.loads(session['credentials'])
     return build('youtube', 'v3', credentials=creds)
 
+# --- VIDEO & KOMENTAR --- #
 def get_latest_video_ids(youtube, channel_id, count=2):
     req = youtube.search().list(
         part="id",
@@ -70,9 +61,9 @@ def get_latest_video_ids(youtube, channel_id, count=2):
     res = req.execute()
     return [item['id']['videoId'] for item in res['items']]
 
-def process_video_comments(youtube, video_id, log_lines):
+def process_video_comments(youtube, video_id):
     nextPageToken = None
-    deleted_count = 0
+    deleted_comments = []
     while True:
         res = youtube.commentThreads().list(
             part="snippet",
@@ -91,24 +82,36 @@ def process_video_comments(youtube, video_id, log_lines):
                     id=comment_id,
                     moderationStatus="rejected"
                 ).execute()
-                deleted_count += 1
-                log_lines.append(f"[{video_id}] Dihapus: {text.strip()}")
+                deleted_comments.append({
+                    'video_id': video_id,
+                    'text': text
+                })
 
         nextPageToken = res.get('nextPageToken')
         if not nextPageToken:
             break
-    return deleted_count
+    return deleted_comments
 
+# --- DISCORD LOGGER --- #
+def send_log_to_discord(lines):
+    if not DISCORD_WEBHOOK_URL or not lines:
+        return
+    content = "**YouTube Spam Cleaner Log**\n" + "\n".join(
+        [f"[Video: {line['video_id']}] {line['text']}" for line in lines])
+    payload = {"content": content}
+    try:
+        requests.post(DISCORD_WEBHOOK_URL, json=payload, timeout=10)
+    except Exception as e:
+        app.logger.error(f"Failed to send Discord log: {e}")
+
+# --- ROUTES --- #
 @app.route('/')
 def index():
     if 'credentials' not in session:
         return redirect(url_for('login'))
     return render_template_string("""
-        <h2>🧹 YouTube Spam Cleaner</h2>
+        <h2>🩹 YouTube Spam Cleaner</h2>
         <form action="/run" method="post">
-            <label>Jumlah video yang ingin dibersihkan:</label>
-            <input type="number" name="video_count" min="1" max="50" value="2" required>
-            <br><br>
             <button type="submit">Mulai Bersihkan Komentar Spam</button>
         </form>
     """)
@@ -116,9 +119,9 @@ def index():
 @app.route('/login')
 def login():
     flow = Flow.from_client_secrets_file(
-        CLIENT_SECRET_FILE,
+        CLIENT_SECRET,
         scopes=SCOPES,
-        redirect_uri=REDIRECT_URI
+        redirect_uri='http://localhost:5000/oauth2callback'
     )
     auth_url, state = flow.authorization_url(prompt='consent')
     session['state'] = state
@@ -128,10 +131,10 @@ def login():
 def oauth2callback():
     state = session.get('state')
     flow = Flow.from_client_secrets_file(
-        CLIENT_SECRET_FILE,
+        CLIENT_SECRET,
         scopes=SCOPES,
         state=state,
-        redirect_uri=REDIRECT_URI
+        redirect_uri='http://localhost:5000/oauth2callback'
     )
     flow.fetch_token(authorization_response=request.url)
     creds = flow.credentials
@@ -144,22 +147,33 @@ def run_cleaner():
     if not youtube:
         return redirect(url_for('login'))
 
-    video_count = int(request.form.get('video_count', 2))
-    video_ids = get_latest_video_ids(youtube, CHANNEL_ID, count=video_count)
-
-    total_deleted = 0
-    log_lines = []
+    video_ids = get_latest_video_ids(youtube, CHANNEL_ID)
+    deleted_comments = []
     for vid in video_ids:
-        total_deleted += process_video_comments(youtube, vid, log_lines)
+        deleted_comments += process_video_comments(youtube, vid)
 
     waktu = datetime.datetime.now().strftime('%Y-%m-%d %H:%M')
-    log_filename = f"spam_log_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
 
-    if log_lines:
-        with open(log_filename, 'w', encoding='utf-8') as f:
-            f.write("\n".join(log_lines))
+    # Kirim log ke Discord
+    send_log_to_discord(deleted_comments)
 
-    return f"✅ {total_deleted} komentar spam berhasil dihapus pada {waktu}.<br>Log disimpan ke: <b>{log_filename}</b>"
+    return render_template_string("""
+        <h2>✅ {{ count }} komentar spam berhasil dihapus pada {{ waktu }}</h2>
+        {% if comments %}
+            <h3>Detail Komentar Spam:</h3>
+            <ul>
+                {% for c in comments %}
+                    <li>
+                        <b>Video:</b> {{ c.video_id }}<br>
+                        <b>Isi:</b> {{ c.text }}
+                    </li><br>
+                {% endfor %}
+            </ul>
+        {% else %}
+            <p>👍 Tidak ada komentar spam ditemukan saat ini.</p>
+        {% endif %}
+        <a href="/">⬅️ Kembali</a>
+    """, count=len(deleted_comments), waktu=waktu, comments=deleted_comments)
 
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
