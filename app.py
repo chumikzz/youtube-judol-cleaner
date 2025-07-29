@@ -27,7 +27,7 @@ JAKARTA_TZ = pytz.timezone("Asia/Jakarta")
 KEYWORDS = list(set([
     'pulau', 'pulauwin', 'pluto', 'plut088', 'pluto88', 'probet855',
     'mona', 'mona4d', 'alexis17', 'soundeffect', 'mudahwin',
-    'akunpro', 'boterpercaya', 'maxwin', 'pulau777', 'weton88',
+    'akunpro', '혗혜혓혈혜혞혐형', 'maxwin', 'pulau777', 'weton88',
     'plutowin', 'plutowinn', 'pluto8', 'pulowin', 'pulauw', 'plu88',
     'pulautoto', 'tempatnyaparapemenangsejatiberkumpul',
     'bahkandilaguremix', 'bergabunglahdenganpulau777',
