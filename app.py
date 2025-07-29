@@ -7,6 +7,7 @@ import re
 import unicodedata
 import pickle
 import requests
+import pytz
 
 from google_auth_oauthlib.flow import Flow
 from googleapiclient.discovery import build
@@ -27,10 +28,11 @@ KEYWORDS = list(set([
     'mona', 'mona4d', 'alexis17', 'soundeffect', 'mudahwin',
     'akunpro', 'boterpercaya', 'maxwin', 'pulau777', 'weton88',
     'plutowin', 'plutowinn', 'pluto8', 'pulowin', 'pulauw', 'plu88',
-    'pulautoto', '홋홐홇혼홐홒홄홉',
+    'pulautoto', 'tempatnyaparapemenangsejatiberkumpul',
     'bahkandilaguremix', 'bergabunglahdenganpulau777'
 ]))
 
+# --- CEK SPAM --- #
 def normalize_text(text):
     text = unicodedata.normalize('NFKD', text)
     text = ''.join(c for c in text if not unicodedata.combining(c))
@@ -41,12 +43,14 @@ def is_spam(text):
     normalized = normalize_text(text)
     return any(keyword in normalized for keyword in KEYWORDS)
 
+# --- AUTENTIKASI --- #
 def get_youtube_service():
     if 'credentials' not in session:
         return None
     creds = pickle.loads(session['credentials'])
     return build('youtube', 'v3', credentials=creds)
 
+# --- VIDEO & KOMENTAR --- #
 def get_latest_video_ids(youtube, channel_id, count=2):
     req = youtube.search().list(
         part="id",
@@ -93,20 +97,18 @@ def process_video_comments(youtube, video_id):
 def send_log_to_discord(lines, waktu):
     if not DISCORD_WEBHOOK_URL:
         return
-
     if lines:
-        content = f"🧹 **{len(lines)} komentar spam berhasil dihapus** pada `{waktu}`\n\n"
-        content += "\n".join([
-            f"🗑️ [Video: {line['video_id']}] {line['text']}" for line in lines
-        ])
+        content = f"**🧹 {len(lines)} komentar spam berhasil dihapus ({waktu})**\n"
+        content += "\n".join(
+            [f"[Video: {line['video_id']}] {line['text']}" for line in lines]
+        )
     else:
-        content = f"✅ Tidak ada komentar spam ditemukan pada `{waktu}`."
-
-    payload = {"content": content[:1900]}  # max limit Discord 2000 char
+        content = f"👍 Tidak ada komentar spam ditemukan pada {waktu}."
+    payload = {"content": content}
     try:
         requests.post(DISCORD_WEBHOOK_URL, json=payload, timeout=10)
     except Exception as e:
-        app.logger.error(f"Gagal kirim log ke Discord: {e}")
+        app.logger.error(f"Failed to send Discord log: {e}")
 
 # --- ROUTES --- #
 @app.route('/')
@@ -156,7 +158,10 @@ def run_cleaner():
     for vid in video_ids:
         deleted_comments += process_video_comments(youtube, vid)
 
-    waktu = datetime.datetime.now().strftime('%Y-%m-%d %H:%M')
+    tz = pytz.timezone('Asia/Jakarta')
+    waktu = datetime.datetime.now(tz).strftime('%Y-%m-%d %H:%M')
+
+    # Kirim log ke Discord
     send_log_to_discord(deleted_comments, waktu)
 
     return render_template_string("""
