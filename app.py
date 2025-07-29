@@ -1,3 +1,4 @@
+print("DEBUG WEBHOOK saat start:", os.getenv("DISCORD_WEBHOOK_URL"))
 import os
 import datetime
 import re
@@ -18,7 +19,6 @@ app.secret_key = 'ganti-ini-dengan-yang-lebih-kuat'
 SCOPES = ['https://www.googleapis.com/auth/youtube.force-ssl']
 CLIENT_SECRET = 'client_secret.json'
 CHANNEL_ID = 'UCkqDgAg-mSqv_4GSNMlYvPw'
-DISCORD_WEBHOOK_URL = os.getenv('DISCORD_WEBHOOK_URL')
 
 # Zona waktu Jakarta
 JAKARTA_TZ = pytz.timezone("Asia/Jakarta")
@@ -98,6 +98,9 @@ def process_video_comments(youtube, video_id):
 
 # --- Kirim Log ke Discord ---
 def send_log_to_discord(lines, waktu):
+    DISCORD_WEBHOOK_URL = os.getenv('DISCORD_WEBHOOK_URL')  # dibaca ulang setiap kali
+    print("DEBUG WEBHOOK saat kirim log:", DISCORD_WEBHOOK_URL)  # debug di Railway logs
+
     if not DISCORD_WEBHOOK_URL:
         app.logger.warning("DISCORD_WEBHOOK_URL not set. Skipping Discord log.")
         return
@@ -168,7 +171,7 @@ def run_cleaner():
 
     waktu = datetime.datetime.now(JAKARTA_TZ).strftime('%Y-%m-%d %H:%M')
 
-    # Kirim log ke Discord SELALU, meskipun kosong
+    # Kirim log ke Discord SELALU
     send_log_to_discord(deleted_comments, waktu)
 
     return render_template_string("""
