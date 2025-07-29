@@ -7,7 +7,6 @@ import re
 import unicodedata
 import pickle
 import requests
-import pytz
 
 from google_auth_oauthlib.flow import Flow
 from googleapiclient.discovery import build
@@ -20,7 +19,9 @@ app.secret_key = 'ganti-ini-dengan-yang-lebih-kuat'
 SCOPES = ['https://www.googleapis.com/auth/youtube.force-ssl']
 CLIENT_SECRET = 'client_secret.json'
 CHANNEL_ID = 'UCkqDgAg-mSqv_4GSNMlYvPw'
-DISCORD_WEBHOOK_URL = os.getenv('DISCORD_WEBHOOK_URL')
+
+# 🔽 Fallback manual (gunakan jika Railway tidak membaca .env)
+DISCORD_WEBHOOK_URL = os.getenv('DISCORD_WEBHOOK_URL') or 'https://discord.com/api/webhooks/ISI_MANUAL_WEBHOOK_MU'
 
 # --- SPAM KEYWORDS --- #
 KEYWORDS = list(set([
@@ -29,7 +30,8 @@ KEYWORDS = list(set([
     'akunpro', 'boterpercaya', 'maxwin', 'pulau777', 'weton88',
     'plutowin', 'plutowinn', 'pluto8', 'pulowin', 'pulauw', 'plu88',
     'pulautoto', 'tempatnyaparapemenangsejatiberkumpul',
-    'bahkandilaguremix', 'bergabunglahdenganpulau777'
+    'bahkandilaguremix', 'bergabunglahdenganpulau777',
+    '퓟퓤퓛퓐퓤퓦퓘퓝', '홿횄홻홰횄횆홸홽'  # ← tambahan fancy font
 ]))
 
 # --- CEK SPAM --- #
@@ -95,8 +97,13 @@ def process_video_comments(youtube, video_id):
 
 # --- DISCORD LOGGER --- #
 def send_log_to_discord(lines, waktu):
+    print(f"[DEBUG] DISCORD_WEBHOOK_URL: {DISCORD_WEBHOOK_URL}")
+    print(f"[DEBUG] Jumlah komentar spam: {len(lines)}")
+
     if not DISCORD_WEBHOOK_URL:
+        print("[DEBUG] DISCORD_WEBHOOK_URL tidak tersedia")
         return
+
     if lines:
         content = f"**🧹 {len(lines)} komentar spam berhasil dihapus ({waktu})**\n"
         content += "\n".join(
@@ -104,9 +111,12 @@ def send_log_to_discord(lines, waktu):
         )
     else:
         content = f"👍 Tidak ada komentar spam ditemukan pada {waktu}."
+
     payload = {"content": content}
     try:
-        requests.post(DISCORD_WEBHOOK_URL, json=payload, timeout=10)
+        response = requests.post(DISCORD_WEBHOOK_URL, json=payload, timeout=10)
+        print(f"[DEBUG] Response status code: {response.status_code}")
+        print(f"[DEBUG] Response content: {response.text}")
     except Exception as e:
         app.logger.error(f"Failed to send Discord log: {e}")
 
@@ -127,7 +137,7 @@ def login():
     flow = Flow.from_client_secrets_file(
         CLIENT_SECRET,
         scopes=SCOPES,
-        redirect_uri='http://localhost:5000/oauth2callback'
+        redirect_uri='https://youtube-judol-cleaner-production.up.railway.app/oauth2callback'
     )
     auth_url, state = flow.authorization_url(prompt='consent')
     session['state'] = state
@@ -140,7 +150,7 @@ def oauth2callback():
         CLIENT_SECRET,
         scopes=SCOPES,
         state=state,
-        redirect_uri='http://localhost:5000/oauth2callback'
+        redirect_uri='https://youtube-judol-cleaner-production.up.railway.app/oauth2callback'
     )
     flow.fetch_token(authorization_response=request.url)
     creds = flow.credentials
@@ -158,10 +168,7 @@ def run_cleaner():
     for vid in video_ids:
         deleted_comments += process_video_comments(youtube, vid)
 
-    tz = pytz.timezone('Asia/Jakarta')
-    waktu = datetime.datetime.now(tz).strftime('%Y-%m-%d %H:%M')
-
-    # Kirim log ke Discord
+    waktu = datetime.datetime.now().strftime('%Y-%m-%d %H:%M')
     send_log_to_discord(deleted_comments, waktu)
 
     return render_template_string("""
@@ -170,10 +177,8 @@ def run_cleaner():
             <h3>Detail Komentar Spam:</h3>
             <ul>
                 {% for c in comments %}
-                    <li>
-                        <b>Video:</b> {{ c.video_id }}<br>
-                        <b>Isi:</b> {{ c.text }}
-                    </li><br>
+                    <li><b>Video:</b> {{ c.video_id }}<br>
+                        <b>Isi:</b> {{ c.text }}</li><br>
                 {% endfor %}
             </ul>
         {% else %}
