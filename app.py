@@ -1,11 +1,13 @@
-print("DEBUG WEBHOOK saat start:", os.getenv("DISCORD_WEBHOOK_URL"))
 import os
+print("DEBUG WEBHOOK saat start:", os.getenv("DISCORD_WEBHOOK_URL"))
+
 import datetime
 import re
 import unicodedata
 import pickle
 import requests
 import pytz
+
 
 from flask import Flask, redirect, request, url_for, render_template_string, session
 from google_auth_oauthlib.flow import Flow
