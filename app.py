@@ -1,29 +1,26 @@
 import os
-os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'
-
-from flask import Flask, redirect, request, url_for, render_template_string, session
 import datetime
 import re
 import unicodedata
 import pickle
 import requests
-
+import pytz
+from flask import Flask, redirect, request, url_for, render_template_string, session
 from google_auth_oauthlib.flow import Flow
 from googleapiclient.discovery import build
 from google.auth.transport.requests import Request
 
+# Flask App
 app = Flask(__name__)
 app.secret_key = 'ganti-ini-dengan-yang-lebih-kuat'
 
-# --- KONFIGURASI --- #
+# Konfigurasi
 SCOPES = ['https://www.googleapis.com/auth/youtube.force-ssl']
 CLIENT_SECRET = 'client_secret.json'
 CHANNEL_ID = 'UCkqDgAg-mSqv_4GSNMlYvPw'
+DISCORD_WEBHOOK_URL = os.getenv('DISCORD_WEBHOOK_URL')
 
-# 🔽 Fallback manual (gunakan jika Railway tidak membaca .env)
-DISCORD_WEBHOOK_URL = os.getenv('DISCORD_WEBHOOK_URL') or 'https://discord.com/api/webhooks/ISI_MANUAL_WEBHOOK_MU'
-
-# --- SPAM KEYWORDS --- #
+# Kata kunci spam
 KEYWORDS = list(set([
     'pulau', 'pulauwin', 'pluto', 'plut088', 'pluto88', 'probet855',
     'mona', 'mona4d', 'alexis17', 'soundeffect', 'mudahwin',
@@ -31,10 +28,10 @@ KEYWORDS = list(set([
     'plutowin', 'plutowinn', 'pluto8', 'pulowin', 'pulauw', 'plu88',
     'pulautoto', 'tempatnyaparapemenangsejatiberkumpul',
     'bahkandilaguremix', 'bergabunglahdenganpulau777',
-    '퓟퓤퓛퓐퓤퓦퓘퓝', '홿횄홻홰횄횆홸홽'  # ← tambahan fancy font
+    '퓟퓤퓛퓐퓤퓦퓘퓝', '홿횄홻홰횄횆홸홽'
 ]))
 
-# --- CEK SPAM --- #
+# Normalisasi dan cek spam
 def normalize_text(text):
     text = unicodedata.normalize('NFKD', text)
     text = ''.join(c for c in text if not unicodedata.combining(c))
@@ -43,16 +40,16 @@ def normalize_text(text):
 
 def is_spam(text):
     normalized = normalize_text(text)
-    return any(keyword in normalized for keyword in KEYWORDS)
+    return any(keyword.lower() in normalized for keyword in KEYWORDS)
 
-# --- AUTENTIKASI --- #
+# YouTube Auth
 def get_youtube_service():
     if 'credentials' not in session:
         return None
     creds = pickle.loads(session['credentials'])
     return build('youtube', 'v3', credentials=creds)
 
-# --- VIDEO & KOMENTAR --- #
+# Ambil video terbaru
 def get_latest_video_ids(youtube, channel_id, count=2):
     req = youtube.search().list(
         part="id",
@@ -64,6 +61,7 @@ def get_latest_video_ids(youtube, channel_id, count=2):
     res = req.execute()
     return [item['id']['videoId'] for item in res['items']]
 
+# Proses komentar spam
 def process_video_comments(youtube, video_id):
     nextPageToken = None
     deleted_comments = []
@@ -95,15 +93,10 @@ def process_video_comments(youtube, video_id):
             break
     return deleted_comments
 
-# --- DISCORD LOGGER --- #
+# Kirim log ke Discord
 def send_log_to_discord(lines, waktu):
-    print(f"[DEBUG] DISCORD_WEBHOOK_URL: {DISCORD_WEBHOOK_URL}")
-    print(f"[DEBUG] Jumlah komentar spam: {len(lines)}")
-
     if not DISCORD_WEBHOOK_URL:
-        print("[DEBUG] DISCORD_WEBHOOK_URL tidak tersedia")
         return
-
     if lines:
         content = f"**🧹 {len(lines)} komentar spam berhasil dihapus ({waktu})**\n"
         content += "\n".join(
@@ -111,16 +104,13 @@ def send_log_to_discord(lines, waktu):
         )
     else:
         content = f"👍 Tidak ada komentar spam ditemukan pada {waktu}."
-
     payload = {"content": content}
     try:
-        response = requests.post(DISCORD_WEBHOOK_URL, json=payload, timeout=10)
-        print(f"[DEBUG] Response status code: {response.status_code}")
-        print(f"[DEBUG] Response content: {response.text}")
+        requests.post(DISCORD_WEBHOOK_URL, json=payload, timeout=10)
     except Exception as e:
         app.logger.error(f"Failed to send Discord log: {e}")
 
-# --- ROUTES --- #
+# Routes
 @app.route('/')
 def index():
     if 'credentials' not in session:
@@ -168,7 +158,11 @@ def run_cleaner():
     for vid in video_ids:
         deleted_comments += process_video_comments(youtube, vid)
 
-    waktu = datetime.datetime.now().strftime('%Y-%m-%d %H:%M')
+    # Timezone Asia/Jakarta
+    tz = pytz.timezone('Asia/Jakarta')
+    waktu = datetime.datetime.now(tz).strftime('%Y-%m-%d %H:%M')
+
+    # Kirim log ke Discord walau tidak ada spam
     send_log_to_discord(deleted_comments, waktu)
 
     return render_template_string("""
@@ -177,8 +171,10 @@ def run_cleaner():
             <h3>Detail Komentar Spam:</h3>
             <ul>
                 {% for c in comments %}
-                    <li><b>Video:</b> {{ c.video_id }}<br>
-                        <b>Isi:</b> {{ c.text }}</li><br>
+                    <li>
+                        <b>Video:</b> {{ c.video_id }}<br>
+                        <b>Isi:</b> {{ c.text }}
+                    </li><br>
                 {% endfor %}
             </ul>
         {% else %}
