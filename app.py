@@ -94,9 +94,12 @@ def process_video_comments(youtube, video_id):
     return deleted_comments
 
 # Kirim log ke Discord
+# --- DISCORD LOGGER ---
 def send_log_to_discord(lines, waktu):
     if not DISCORD_WEBHOOK_URL:
+        app.logger.warning("DISCORD_WEBHOOK_URL not set.")
         return
+
     if lines:
         content = f"**🧹 {len(lines)} komentar spam berhasil dihapus ({waktu})**\n"
         content += "\n".join(
@@ -104,49 +107,17 @@ def send_log_to_discord(lines, waktu):
         )
     else:
         content = f"👍 Tidak ada komentar spam ditemukan pada {waktu}."
+
     payload = {"content": content}
     try:
-        requests.post(DISCORD_WEBHOOK_URL, json=payload, timeout=10)
+        resp = requests.post(DISCORD_WEBHOOK_URL, json=payload, timeout=10)
+        app.logger.info(f"Discord webhook status: {resp.status_code}")
+        if resp.status_code != 204:
+            app.logger.error(f"Discord response: {resp.text}")
     except Exception as e:
         app.logger.error(f"Failed to send Discord log: {e}")
 
-# Routes
-@app.route('/')
-def index():
-    if 'credentials' not in session:
-        return redirect(url_for('login'))
-    return render_template_string("""
-        <h2>🩹 YouTube Spam Cleaner</h2>
-        <form action="/run" method="post">
-            <button type="submit">Mulai Bersihkan Komentar Spam</button>
-        </form>
-    """)
-
-@app.route('/login')
-def login():
-    flow = Flow.from_client_secrets_file(
-        CLIENT_SECRET,
-        scopes=SCOPES,
-        redirect_uri='https://youtube-judol-cleaner-production.up.railway.app/oauth2callback'
-    )
-    auth_url, state = flow.authorization_url(prompt='consent')
-    session['state'] = state
-    return redirect(auth_url)
-
-@app.route('/oauth2callback')
-def oauth2callback():
-    state = session.get('state')
-    flow = Flow.from_client_secrets_file(
-        CLIENT_SECRET,
-        scopes=SCOPES,
-        state=state,
-        redirect_uri='https://youtube-judol-cleaner-production.up.railway.app/oauth2callback'
-    )
-    flow.fetch_token(authorization_response=request.url)
-    creds = flow.credentials
-    session['credentials'] = pickle.dumps(creds)
-    return redirect(url_for('index'))
-
+# --- ROUTE /run ---
 @app.route('/run', methods=['POST'])
 def run_cleaner():
     youtube = get_youtube_service()
@@ -158,11 +129,11 @@ def run_cleaner():
     for vid in video_ids:
         deleted_comments += process_video_comments(youtube, vid)
 
-    # Timezone Asia/Jakarta
-    tz = pytz.timezone('Asia/Jakarta')
-    waktu = datetime.datetime.now(tz).strftime('%Y-%m-%d %H:%M')
+    # Pastikan waktu di zona Asia/Jakarta
+    import pytz
+    waktu = datetime.datetime.now(pytz.timezone("Asia/Jakarta")).strftime('%Y-%m-%d %H:%M')
 
-    # Kirim log ke Discord walau tidak ada spam
+    # Kirim log ke Discord meskipun kosong
     send_log_to_discord(deleted_comments, waktu)
 
     return render_template_string("""
