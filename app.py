@@ -18,13 +18,15 @@ app.secret_key = 'ganti-ini-dengan-yang-lebih-kuat'
 
 # --- Konfigurasi ---
 SCOPES = ['https://www.googleapis.com/auth/youtube.force-ssl']
-# Simpan file sementara dari environment variable
+
+# Pakai CLIENT_SECRET_JSON dari env var atau fallback lokal
 if 'CLIENT_SECRET_JSON' in os.environ:
     CLIENT_SECRET = '/tmp/client_secret.json'
     with open(CLIENT_SECRET, 'w') as f:
         f.write(os.environ['CLIENT_SECRET_JSON'])
 else:
-    CLIENT_SECRET = 'client_secret.json'  # fallback lokal
+    CLIENT_SECRET = 'client_secret.json'
+
 CHANNEL_ID = 'UCkqDgAg-mSqv_4GSNMlYvPw'
 JAKARTA_TZ = pytz.timezone("Asia/Jakarta")
 
@@ -109,15 +111,14 @@ def process_video_comments(youtube, video_id):
     return deleted_comments
 
 # --- Upload Log ke Google Drive ---
-FOLDER_ID = '1Elns-lVNWfD4993wOA24_QHNtQJRvpE2'  # Ganti dengan Folder ID Google Drive kamu
+FOLDER_ID = '1Elns-lVNWfD4993wOA24_QHNtQJRvpE2'
 
-# Pilih sumber kredensial
 if 'SERVICE_ACCOUNT_JSON' in os.environ:
     SERVICE_ACCOUNT_FILE = '/tmp/service_account.json'
     with open(SERVICE_ACCOUNT_FILE, 'w') as f:
         f.write(os.environ['SERVICE_ACCOUNT_JSON'])
 else:
-    SERVICE_ACCOUNT_FILE = 'service_account.json'  # fallback lokal
+    SERVICE_ACCOUNT_FILE = 'service_account.json'
 
 def upload_log_to_drive(filename):
     creds = service_account.Credentials.from_service_account_file(
@@ -187,7 +188,6 @@ def run_cleaner():
 
     waktu = datetime.datetime.now(JAKARTA_TZ).strftime('%Y-%m-%d %H:%M')
 
-    # Simpan log ke file
     log_filename = f'log_{datetime.datetime.now(JAKARTA_TZ).strftime("%Y%m%d_%H%M%S")}.txt'
     with open(log_filename, 'w', encoding='utf-8') as f:
         if deleted_comments:
@@ -196,7 +196,6 @@ def run_cleaner():
         else:
             f.write(f"Tidak ada komentar spam ditemukan pada {waktu}")
 
-    # Upload log ke Google Drive
     upload_log_to_drive(log_filename)
 
     return render_template_string("""
