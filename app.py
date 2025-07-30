@@ -3,8 +3,8 @@ import datetime
 import re
 import unicodedata
 import pickle
-import requests
 import pytz
+import json
 from flask import Flask, redirect, request, url_for, render_template_string, session
 from google_auth_oauthlib.flow import Flow
 from googleapiclient.discovery import build
@@ -20,8 +20,6 @@ app.secret_key = 'ganti-ini-dengan-yang-lebih-kuat'
 SCOPES = ['https://www.googleapis.com/auth/youtube.force-ssl']
 CLIENT_SECRET = 'client_secret.json'
 CHANNEL_ID = 'UCkqDgAg-mSqv_4GSNMlYvPw'
-
-# Zona waktu Jakarta
 JAKARTA_TZ = pytz.timezone("Asia/Jakarta")
 
 # --- Daftar Kata Spam ---
@@ -98,11 +96,15 @@ def process_video_comments(youtube, video_id):
     return deleted_comments
 
 # --- Upload Log ke Google Drive ---
-import json
-SERVICE_ACCOUNT_FILE = '/tmp/service_account.json'
-with open(SERVICE_ACCOUNT_FILE, 'w') as f:
-    f.write(os.environ['SERVICE_ACCOUNT_JSON'])  # SERVICE_ACCOUNT_JSON di Railway Variables
 FOLDER_ID = '1Elns-lVNWfD4993wOA24_QHNtQJRvpE2'  # Ganti dengan Folder ID Google Drive kamu
+
+# Pilih sumber kredensial
+if 'SERVICE_ACCOUNT_JSON' in os.environ:
+    SERVICE_ACCOUNT_FILE = '/tmp/service_account.json'
+    with open(SERVICE_ACCOUNT_FILE, 'w') as f:
+        f.write(os.environ['SERVICE_ACCOUNT_JSON'])
+else:
+    SERVICE_ACCOUNT_FILE = 'service_account.json'  # fallback lokal
 
 def upload_log_to_drive(filename):
     creds = service_account.Credentials.from_service_account_file(
