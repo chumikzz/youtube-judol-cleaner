@@ -18,11 +18,16 @@ app.secret_key = 'ganti-ini-dengan-yang-lebih-kuat'
 
 # --- Konfigurasi ---
 SCOPES = ['https://www.googleapis.com/auth/youtube.force-ssl']
-CLIENT_SECRET = '/tmp/client_secret.json'
-with open(CLIENT_SECRET, 'w') as f:
-    f.write(os.environ['CLIENT_SECRET_JSON'])
+CLIENT_SECRET = 'client_secret.json'  # fallback lokal
 CHANNEL_ID = 'UCkqDgAg-mSqv_4GSNMlYvPw'
 JAKARTA_TZ = pytz.timezone("Asia/Jakarta")
+
+# Tentukan URL redirect sesuai environment
+if os.environ.get("RAILWAY_ENVIRONMENT"):
+    REDIRECT_URI = "https://youtube-judol-cleaner-production.up.railway.app/oauth2callback"
+else:
+    os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'
+    REDIRECT_URI = "http://localhost:5000/oauth2callback"
 
 # --- Daftar Kata Spam ---
 KEYWORDS = list(set([
@@ -143,7 +148,7 @@ def login():
     flow = Flow.from_client_secrets_file(
         CLIENT_SECRET,
         scopes=SCOPES,
-        redirect_uri='https://youtube-judol-cleaner-production.up.railway.app/oauth2callback'
+        redirect_uri=REDIRECT_URI
     )
     auth_url, state = flow.authorization_url(prompt='consent')
     session['state'] = state
@@ -156,7 +161,7 @@ def oauth2callback():
         CLIENT_SECRET,
         scopes=SCOPES,
         state=state,
-        redirect_uri='https://youtube-judol-cleaner-production.up.railway.app/oauth2callback'
+        redirect_uri=REDIRECT_URI
     )
     flow.fetch_token(authorization_response=request.url)
     creds = flow.credentials
