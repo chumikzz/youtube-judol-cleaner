@@ -12,6 +12,10 @@ import pytz
 from flask import Flask, redirect, request, url_for, render_template_string, session
 from google_auth_oauthlib.flow import Flow
 from googleapiclient.discovery import build
+from google.oauth2 import service_account
+from googleapiclient.discovery import build as build_gdrive
+from googleapiclient.http import MediaFileUpload
+
 
 # --- Flask App ---
 app = Flask(__name__)
@@ -98,30 +102,32 @@ def process_video_comments(youtube, video_id):
             break
     return deleted_comments
 
-# --- Kirim Log ke Discord ---
-def send_log_to_discord(lines, waktu):
-    DISCORD_WEBHOOK_URL = os.getenv('DISCORD_WEBHOOK_URL')  # dibaca ulang setiap kali
-    print("DEBUG WEBHOOK saat kirim log:", DISCORD_WEBHOOK_URL)  # debug di Railway logs
 
-    if not DISCORD_WEBHOOK_URL:
-        app.logger.warning("DISCORD_WEBHOOK_URL not set. Skipping Discord log.")
-        return
 
-    if lines and len(lines) > 0:
-        content = f"**🧹 {len(lines)} komentar spam berhasil dihapus ({waktu})**\n"
-        content += "\n".join(
-            [f"[Video: {line['video_id']}] {line['text']}" for line in lines]
-        )
-    else:
-        content = f"👍 Tidak ada komentar spam ditemukan pada {waktu}."
+# --- Upload Log ke Google Drive ---
+import json
+SERVICE_ACCOUNT_FILE = '/tmp/service_account.json'
+with open(SERVICE_ACCOUNT_FILE, 'w') as f:
+    f.write(os.environ['SERVICE_ACCOUNT_JSON']) # Pastikan file ini ada di Railway
+FOLDER_ID = '1Elns-lVNWfD4993wOA24_QHNtQJRvpE2'  # Ganti dengan Folder ID Google Drive kamu
 
-    payload = {"content": content}
-    try:
-        resp = requests.post(DISCORD_WEBHOOK_URL, json=payload, timeout=10)
-        if resp.status_code != 204:
-            app.logger.error(f"Discord webhook error: {resp.status_code} - {resp.text}")
-    except Exception as e:
-        app.logger.error(f"Failed to send Discord log: {e}")
+def upload_log_to_drive(filename):
+    creds = service_account.Credentials.from_service_account_file(
+        SERVICE_ACCOUNT_FILE,
+        scopes=["https://www.googleapis.com/auth/drive.file"]
+    )
+    drive_service = build_gdrive("drive", "v3", credentials=creds)
+    file_metadata = {
+        "name": filename,
+        "parents": [FOLDER_ID]
+    }
+    media = MediaFileUpload(filename, mimetype="text/plain")
+    file = drive_service.files().create(
+        body=file_metadata,
+        media_body=media,
+        fields="id"
+    ).execute()
+    print(f"✅ Log berhasil diupload ke Google Drive. File ID: {file.get('id')}")
 
 # --- Routes ---
 @app.route('/')
@@ -171,10 +177,20 @@ def run_cleaner():
     for vid in video_ids:
         deleted_comments += process_video_comments(youtube, vid)
 
-    waktu = datetime.datetime.now(JAKARTA_TZ).strftime('%Y-%m-%d %H:%M')
+    # Simpan log ke file
+    log_filename = f'log_{datetime.datetime.now(JAKARTA_TZ).strftime(\"%Y%m%d_%H%M%S\")}.txt'
+    with open(log_filename, 'w', encoding='utf-8') as f:
+        if deleted_comments:
+            for c in deleted_comments:
+                f.write(f\"Video: {c['video_id']}\nIsi: {c['text']}\n\n\")
+        else:
+            f.write(f\"Tidak ada komentar spam ditemukan pada {waktu}\")
 
-    # Kirim log ke Discord SELALU
-    send_log_to_discord(deleted_comments, waktu)
+    # Upload log ke Google Drive
+    upload_log_to_drive(log_filename)
+
+
+    waktu = datetime.datetime.now(JAKARTA_TZ).strftime('%Y-%m-%d %H:%M')
 
     return render_template_string("""
         <h2>✅ {{ count }} komentar spam berhasil dihapus pada {{ waktu }}</h2>
