@@ -4,8 +4,8 @@ import re
 import unicodedata
 import pickle
 import pytz
-import json
 from flask import Flask, redirect, request, url_for, render_template_string, session
+from werkzeug.middleware.proxy_fix import ProxyFix
 from google_auth_oauthlib.flow import Flow
 from googleapiclient.discovery import build
 from google.oauth2 import service_account
@@ -15,6 +15,9 @@ from googleapiclient.http import MediaFileUpload
 # --- Flask App ---
 app = Flask(__name__)
 app.secret_key = 'ganti-ini-dengan-yang-lebih-kuat'
+
+# Pastikan Railway dianggap HTTPS
+app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
 
 # --- Konfigurasi ---
 SCOPES = ['https://www.googleapis.com/auth/youtube.force-ssl']
