@@ -1,21 +1,16 @@
 import os
-print("DEBUG WEBHOOK saat start:", os.getenv("DISCORD_WEBHOOK_URL"))
-
 import datetime
 import re
 import unicodedata
 import pickle
 import requests
 import pytz
-
-
 from flask import Flask, redirect, request, url_for, render_template_string, session
 from google_auth_oauthlib.flow import Flow
 from googleapiclient.discovery import build
 from google.oauth2 import service_account
 from googleapiclient.discovery import build as build_gdrive
 from googleapiclient.http import MediaFileUpload
-
 
 # --- Flask App ---
 app = Flask(__name__)
@@ -102,13 +97,11 @@ def process_video_comments(youtube, video_id):
             break
     return deleted_comments
 
-
-
 # --- Upload Log ke Google Drive ---
 import json
 SERVICE_ACCOUNT_FILE = '/tmp/service_account.json'
 with open(SERVICE_ACCOUNT_FILE, 'w') as f:
-    f.write(os.environ['SERVICE_ACCOUNT_JSON']) # Pastikan file ini ada di Railway
+    f.write(os.environ['SERVICE_ACCOUNT_JSON'])  # SERVICE_ACCOUNT_JSON di Railway Variables
 FOLDER_ID = '1Elns-lVNWfD4993wOA24_QHNtQJRvpE2'  # Ganti dengan Folder ID Google Drive kamu
 
 def upload_log_to_drive(filename):
@@ -177,20 +170,19 @@ def run_cleaner():
     for vid in video_ids:
         deleted_comments += process_video_comments(youtube, vid)
 
+    waktu = datetime.datetime.now(JAKARTA_TZ).strftime('%Y-%m-%d %H:%M')
+
     # Simpan log ke file
-    log_filename = f'log_{datetime.datetime.now(JAKARTA_TZ).strftime(\"%Y%m%d_%H%M%S\")}.txt'
+    log_filename = f'log_{datetime.datetime.now(JAKARTA_TZ).strftime("%Y%m%d_%H%M%S")}.txt'
     with open(log_filename, 'w', encoding='utf-8') as f:
         if deleted_comments:
             for c in deleted_comments:
-                f.write(f\"Video: {c['video_id']}\nIsi: {c['text']}\n\n\")
+                f.write(f"Video: {c['video_id']}\nIsi: {c['text']}\n\n")
         else:
-            f.write(f\"Tidak ada komentar spam ditemukan pada {waktu}\")
+            f.write(f"Tidak ada komentar spam ditemukan pada {waktu}")
 
     # Upload log ke Google Drive
     upload_log_to_drive(log_filename)
-
-
-    waktu = datetime.datetime.now(JAKARTA_TZ).strftime('%Y-%m-%d %H:%M')
 
     return render_template_string("""
         <h2>✅ {{ count }} komentar spam berhasil dihapus pada {{ waktu }}</h2>
