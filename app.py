@@ -18,7 +18,9 @@ app.secret_key = 'ganti-ini-dengan-yang-lebih-kuat'
 
 # --- Konfigurasi ---
 SCOPES = ['https://www.googleapis.com/auth/youtube.force-ssl']
-CLIENT_SECRET = 'client_secret.json'
+CLIENT_SECRET = '/tmp/client_secret.json'
+with open(CLIENT_SECRET, 'w') as f:
+    f.write(os.environ['CLIENT_SECRET_JSON'])
 CHANNEL_ID = 'UCkqDgAg-mSqv_4GSNMlYvPw'
 JAKARTA_TZ = pytz.timezone("Asia/Jakarta")
 
