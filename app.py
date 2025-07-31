@@ -1,4 +1,3 @@
-
 import os
 import datetime
 import re
@@ -187,7 +186,7 @@ def run_cleaner():
     with open(log_filename, 'w', encoding='utf-8') as f:
         if deleted_comments:
             for c in deleted_comments:
-                f.write(f"Video: {c['video_id']}\n")
+                f.write(f"Video: {c['video_id']}
 Isi: {c['text']}
 
 ")
