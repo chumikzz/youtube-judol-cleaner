@@ -1,65 +1,48 @@
 import os
-import datetime
 import re
 import unicodedata
 import pickle
+import datetime
 import pytz
-import json
+import requests
 from flask import Flask, redirect, request, url_for, render_template_string, session
-from werkzeug.middleware.proxy_fix import ProxyFix
 from google_auth_oauthlib.flow import Flow
 from googleapiclient.discovery import build
-from google.oauth2 import service_account
-from googleapiclient.discovery import build as build_gdrive
-from googleapiclient.http import MediaFileUpload
 
-# --- Flask App ---
+# Flask app
 app = Flask(__name__)
-app.secret_key = os.environ.get("FLASK_SECRET_KEY", "ganti-ini-dengan-yang-lebih-kuat")
+app.secret_key = 'ganti-ini-dengan-yang-lebih-kuat'
 
-# Pastikan Railway dianggap HTTPS
-app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
-
-# --- Konfigurasi ---
+# Konfigurasi
 SCOPES = ['https://www.googleapis.com/auth/youtube.force-ssl']
+CLIENT_SECRET_FILE = 'client_secret.json'
 CHANNEL_ID = 'UCkqDgAg-mSqv_4GSNMlYvPw'
-JAKARTA_TZ = pytz.timezone("Asia/Jakarta")
+DISCORD_WEBHOOK_URL = os.getenv('DISCORD_WEBHOOK_URL')
 
-# Ambil config OAuth dari env var
-if 'CLIENT_SECRET_JSON' in os.environ:
-    CLIENT_CONFIG = json.loads(os.environ['CLIENT_SECRET_JSON'])
-else:
-    raise RuntimeError("⚠️ CLIENT_SECRET_JSON tidak ditemukan di environment variable!")
-
-# Tentukan URL redirect sesuai environment
-if os.environ.get("RAILWAY_ENVIRONMENT"):
-    REDIRECT_URI = "https://youtube-judol-cleaner-production.up.railway.app/oauth2callback"
-else:
-    os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'
-    REDIRECT_URI = "http://localhost:5000/oauth2callback"
-
-# --- Daftar Kata Spam ---
+# Spam keywords (tambahan unicode)
 KEYWORDS = list(set([
     'pulau', 'pulauwin', 'pluto', 'plut088', 'pluto88', 'probet855',
     'mona', 'mona4d', 'alexis17', 'soundeffect', 'mudahwin',
-    'akunpro', '혗혜혓혈혜혞혐형', 'maxwin', 'pulau777', 'weton88',
+    'akunpro', 'boterpercaya', 'maxwin', 'pulau777', 'weton88',
     'plutowin', 'plutowinn', 'pluto8', 'pulowin', 'pulauw', 'plu88',
     'pulautoto', 'tempatnyaparapemenangsejatiberkumpul',
     'bahkandilaguremix', 'bergabunglahdenganpulau777',
     '퓟퓤퓛퓐퓤퓦퓘퓝', '홿횄홻홰횄횆홸홽'
 ]))
 
+# Normalisasi teks
 def normalize_text(text):
     text = unicodedata.normalize('NFKD', text)
     text = ''.join(c for c in text if not unicodedata.combining(c))
-    text = re.sub(r'[^
-\w\s]', '', text)
+    text = re.sub(r'[^\w\s]', '', text)
     return text.replace(" ", "").lower()
 
+# Deteksi spam
 def is_spam(text):
     normalized = normalize_text(text)
     return any(keyword in normalized for keyword in KEYWORDS)
 
+# YouTube API
 def get_youtube_service():
     if 'credentials' not in session:
         return None
@@ -108,54 +91,40 @@ def process_video_comments(youtube, video_id):
             break
     return deleted_comments
 
-# --- Upload Log ke Google Drive ---
-FOLDER_ID = '1Elns-lVNWfD4993wOA24_QHNtQJRvpE2'
-# Defer load of service account info to runtime to avoid boot errors
-SERVICE_ACCOUNT_INFO = None
-if os.environ.get('SERVICE_ACCOUNT_JSON'):
+# Discord logger
+def send_log_to_discord(lines, waktu):
+    if not DISCORD_WEBHOOK_URL:
+        return
+    if lines:
+        content = f"**🧹 {len(lines)} komentar spam berhasil dihapus ({waktu})**\n"
+        content += "\n".join([f"[Video: {line['video_id']}] {line['text']}" for line in lines])
+    else:
+        content = f"👍 Tidak ada komentar spam ditemukan pada {waktu}."
     try:
-        SERVICE_ACCOUNT_INFO = json.loads(os.environ['SERVICE_ACCOUNT_JSON'])
-    except json.JSONDecodeError:
-        raise RuntimeError("⚠️ SERVICE_ACCOUNT_JSON invalid JSON in environment variable!")
+        requests.post(DISCORD_WEBHOOK_URL, json={"content": content}, timeout=10)
+    except Exception as e:
+        app.logger.error(f"Failed to send Discord log: {e}")
 
-def upload_log_to_drive(filename):
-    if not SERVICE_ACCOUNT_INFO:
-        raise RuntimeError("⚠️ SERVICE_ACCOUNT_JSON tidak ditemukan di environment variable!")
-    creds = service_account.Credentials.from_service_account_info(
-        SERVICE_ACCOUNT_INFO,
-        scopes=["https://www.googleapis.com/auth/drive.file"]
-    )
-    drive_service = build_gdrive("drive", "v3", credentials=creds)
-    file_metadata = {
-        "name": filename,
-        "parents": [FOLDER_ID]
-    }
-    media = MediaFileUpload(filename, mimetype="text/plain")
-    file = drive_service.files().create(
-        body=file_metadata,
-        media_body=media,
-        fields="id"
-    ).execute()
-    print(f"✅ Log berhasil diupload ke Google Drive. File ID: {file.get('id')}")
-
-# --- Routes ---
+# Routes
 @app.route('/')
 def index():
     if 'credentials' not in session:
         return redirect(url_for('login'))
     return render_template_string("""
-        <h2>🩹 YouTube Spam Cleaner</h2>
+        <h2>🧹 YouTube Spam Cleaner</h2>
         <form action="/run" method="post">
+            <label>Jumlah video:</label>
+            <input type="number" name="video_count" value="2" min="1" max="50">
             <button type="submit">Mulai Bersihkan Komentar Spam</button>
         </form>
     """)
 
 @app.route('/login')
 def login():
-    flow = Flow.from_client_config(
-        CLIENT_CONFIG,
+    flow = Flow.from_client_secrets_file(
+        CLIENT_SECRET_FILE,
         scopes=SCOPES,
-        redirect_uri=REDIRECT_URI
+        redirect_uri='https://youtube-judol-cleaner-production.up.railway.app/oauth2callback'
     )
     auth_url, state = flow.authorization_url(prompt='consent')
     session['state'] = state
@@ -164,11 +133,11 @@ def login():
 @app.route('/oauth2callback')
 def oauth2callback():
     state = session.get('state')
-    flow = Flow.from_client_config(
-        CLIENT_CONFIG,
+    flow = Flow.from_client_secrets_file(
+        CLIENT_SECRET_FILE,
         scopes=SCOPES,
         state=state,
-        redirect_uri=REDIRECT_URI
+        redirect_uri='https://youtube-judol-cleaner-production.up.railway.app/oauth2callback'
     )
     flow.fetch_token(authorization_response=request.url)
     creds = flow.credentials
@@ -181,21 +150,18 @@ def run_cleaner():
     if not youtube:
         return redirect(url_for('login'))
 
-    video_ids = get_latest_video_ids(youtube, CHANNEL_ID)
+    video_count = int(request.form.get('video_count', 2))
+    video_ids = get_latest_video_ids(youtube, CHANNEL_ID, count=video_count)
+
     deleted_comments = []
     for vid in video_ids:
         deleted_comments += process_video_comments(youtube, vid)
 
-    waktu = datetime.datetime.now(JAKARTA_TZ).strftime('%Y-%m-%d %H:%M')
-    log_filename = f'log_{datetime.datetime.now(JAKARTA_TZ).strftime("%Y%m%d_%H%M%S")}.txt'
-    with open(log_filename, 'w', encoding='utf-8') as f:
-        if deleted_comments:
-            for c in deleted_comments:
-                f.write(f"Video: {c['video_id']}\nIsi: {c['text']}\n\n")
-        else:
-            f.write(f"Tidak ada komentar spam ditemukan pada {waktu}")
+    # Zona waktu Asia/Jakarta
+    waktu = datetime.datetime.now(pytz.timezone("Asia/Jakarta")).strftime('%Y-%m-%d %H:%M')
 
-    upload_log_to_drive(log_filename)
+    # Kirim ke Discord
+    send_log_to_discord(deleted_comments, waktu)
 
     return render_template_string("""
         <h2>✅ {{ count }} komentar spam berhasil dihapus pada {{ waktu }}</h2>
@@ -203,19 +169,15 @@ def run_cleaner():
             <h3>Detail Komentar Spam:</h3>
             <ul>
                 {% for c in comments %}
-                    <li>
-                        <b>Video:</b> {{ c.video_id }}<br>
-                        <b>Isi:</b> {{ c.text }}
-                    </li><br>
+                    <li><b>Video:</b> {{ c.video_id }}<br><b>Isi:</b> {{ c.text }}</li><br>
                 {% endfor %}
             </ul>
         {% else %}
             <p>👍 Tidak ada komentar spam ditemukan saat ini.</p>
         {% endif %}
-        <a href=">⬅️ Kembali</a>
+        <a href="/">⬅️ Kembali</a>
     """, count=len(deleted_comments), waktu=waktu, comments=deleted_comments)
 
-# --- Main ---
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
     app.run(debug=True, host="0.0.0.0", port=port)
