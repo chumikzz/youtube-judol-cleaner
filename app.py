@@ -187,7 +187,7 @@ def run_cleaner():
     with open(log_filename, 'w', encoding='utf-8') as f:
         if deleted_comments:
             for c in deleted_comments:
-                f.write(f"Video: {c['video_id']}
+                f.write(f"Video: {c['video_id']}\n")
 Isi: {c['text']}
 
 ")
