@@ -186,10 +186,7 @@ def run_cleaner():
     with open(log_filename, 'w', encoding='utf-8') as f:
         if deleted_comments:
             for c in deleted_comments:
-                f.write(f"Video: {c['video_id']}
-Isi: {c['text']}
-
-")
+                f.write(f"Video: {c['video_id']}\nIsi: {c['text']}\n\n")
         else:
             f.write(f"Tidak ada komentar spam ditemukan pada {waktu}")
 
@@ -210,7 +207,7 @@ Isi: {c['text']}
         {% else %}
             <p>👍 Tidak ada komentar spam ditemukan saat ini.</p>
         {% endif %}
-        <a href="/">⬅️ Kembali</a>
+        <a href=">⬅️ Kembali</a>
     """, count=len(deleted_comments), waktu=waktu, comments=deleted_comments)
 
 # --- Main ---
