@@ -52,7 +52,8 @@ KEYWORDS = list(set([
 def normalize_text(text):
     text = unicodedata.normalize('NFKD', text)
     text = ''.join(c for c in text if not unicodedata.combining(c))
-    text = re.sub(r'[^\w\s]', '', text)
+    text = re.sub(r'[^
+\w\s]', '', text)
     return text.replace(" ", "").lower()
 
 def is_spam(text):
@@ -109,13 +110,17 @@ def process_video_comments(youtube, video_id):
 
 # --- Upload Log ke Google Drive ---
 FOLDER_ID = '1Elns-lVNWfD4993wOA24_QHNtQJRvpE2'
-
-if 'SERVICE_ACCOUNT_JSON' in os.environ:
-    SERVICE_ACCOUNT_INFO = json.loads(os.environ['SERVICE_ACCOUNT_JSON'])
-else:
-    raise RuntimeError("⚠️ SERVICE_ACCOUNT_JSON tidak ditemukan di environment variable!")
+# Defer load of service account info to runtime to avoid boot errors
+SERVICE_ACCOUNT_INFO = None
+if os.environ.get('SERVICE_ACCOUNT_JSON'):
+    try:
+        SERVICE_ACCOUNT_INFO = json.loads(os.environ['SERVICE_ACCOUNT_JSON'])
+    except json.JSONDecodeError:
+        raise RuntimeError("⚠️ SERVICE_ACCOUNT_JSON invalid JSON in environment variable!")
 
 def upload_log_to_drive(filename):
+    if not SERVICE_ACCOUNT_INFO:
+        raise RuntimeError("⚠️ SERVICE_ACCOUNT_JSON tidak ditemukan di environment variable!")
     creds = service_account.Credentials.from_service_account_info(
         SERVICE_ACCOUNT_INFO,
         scopes=["https://www.googleapis.com/auth/drive.file"]
