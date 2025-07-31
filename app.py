@@ -121,10 +121,11 @@ def index():
 
 @app.route('/login')
 def login():
-    flow = Flow.from_client_secrets_file(
-        CLIENT_SECRET_FILE,
+    # Gunakan CLIENT_CONFIG yang sudah di-load dari env var
+    flow = Flow.from_client_config(
+        CLIENT_CONFIG,
         scopes=SCOPES,
-        redirect_uri='https://youtube-judol-cleaner-production.up.railway.app/oauth2callback'
+        redirect_uri=REDIRECT_URI
     )
     auth_url, state = flow.authorization_url(prompt='consent')
     session['state'] = state
@@ -132,16 +133,14 @@ def login():
 
 @app.route('/oauth2callback')
 def oauth2callback():
-    state = session.get('state')
-    flow = Flow.from_client_secrets_file(
-        CLIENT_SECRET_FILE,
+    flow = Flow.from_client_config(
+        CLIENT_CONFIG,
         scopes=SCOPES,
-        state=state,
-        redirect_uri='https://youtube-judol-cleaner-production.up.railway.app/oauth2callback'
+        state=session.get('state'),
+        redirect_uri=REDIRECT_URI
     )
     flow.fetch_token(authorization_response=request.url)
-    creds = flow.credentials
-    session['credentials'] = pickle.dumps(creds)
+    session['credentials'] = pickle.dumps(flow.credentials)
     return redirect(url_for('index'))
 
 @app.route('/run', methods=['POST'])
